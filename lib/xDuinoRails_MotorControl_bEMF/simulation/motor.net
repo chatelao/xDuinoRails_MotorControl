@@ -1,0 +1,66 @@
+* Brushed DC Motor Simulation
+* Compatible with LTSpice and Ngspice
+* 50% PWM at 20V
+
+.param Vsupply=20
+.param Duty=0.5
+.param Freq=20k
+.param Period={1/Freq}
+.param Ton={Period*Duty}
+
+* PWM Input (Voltage Source)
+Vpwm 1 0 PULSE(0 {Vsupply} 0 10n 10n {Ton} {Period})
+
+* Motor Electrical Model
+* R = 12 Ohm, L = 2 mH
+Rarm 1 2 12
+Larm 2 3 2m
+
+* Current Sense (Zero volt source)
+Vsense 3 4 0
+
+* Back EMF (Voltage Controlled Voltage Source)
+* V_bemf = Ke * Omega
+* Ke = 0.01 V/(rad/s)
+* 3-sector commutation ripple: Modulate by (1 + 0.1 * sin(3 * V(theta)))
+Ebemf 4 5 VALUE = {0.01 * V(omega) * (1 + 0.1 * sin(3 * V(theta)))}
+
+* Shunt Resistor
+Rshunt 5 0 0.1
+
+* Motor Mechanical Model
+* Analogy: Voltage=Velocity, Current=Torque
+* Torque Source (Current Controlled Current Source)
+* Torque = Kt * I_motor
+* Kt = 0.01 N*m/A
+* 3-sector commutation ripple: Modulate by (1 + 0.1 * sin(3 * theta))
+Gtorque 0 omega VALUE = {0.01 * I(Vsense) * (1 + 0.1 * sin(3 * V(theta)))}
+
+* Rotor Angle Integration
+* theta = integral(omega)
+* C = 1, I = V(omega) -> V(theta) = integral(V(omega))
+Cangle theta 0 1
+Gangle 0 theta VALUE = {V(omega)}
+* Add a large resistor to prevent floating node issues (optional but good practice)
+Rangle theta 0 1G
+
+* Inertia (Capacitor)
+* J = 1e-6 kg*m^2
+Cinertia omega 0 1u
+
+* Friction (Resistor)
+* B = 1e-5 N*m*s/rad
+* R = 1/B = 100k
+Rfrict omega 0 100k
+
+* Transient Analysis: 1us step, 500us total (10 PWM cycles at 20kHz)
+.tran 1u 500us
+
+* Control block for Ngspice (Ignored by LTSpice)
+.control
+run
+set filetype=ascii
+write simulation_result.txt I(Vsense) V(1) V(omega) V(4) V(5)
+.endc
+
+.end

@@ -1,0 +1,8 @@
+.pio/
+simulation/*.raw
+simulation/*.txt
+simulation/*.png
+!simulation/simulation_result.png
+!simulation/simulation_stalled_result.png
+rust/target/
+rust/output/

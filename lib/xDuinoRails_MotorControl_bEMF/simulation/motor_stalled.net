@@ -1,0 +1,50 @@
+* Brushed DC Motor Simulation (STALLED)
+* Compatible with LTSpice and Ngspice
+* 50% PWM at 20V
+* Stalled means Omega is forced to 0.
+
+.param Vsupply=20
+.param Duty=0.5
+.param Freq=20k
+.param Period={1/Freq}
+.param Ton={Period*Duty}
+
+* PWM Input (Voltage Source)
+Vpwm 1 0 PULSE(0 {Vsupply} 0 10n 10n {Ton} {Period})
+
+* Motor Electrical Model
+* R = 12 Ohm, L = 2 mH
+Rarm 1 2 12
+Larm 2 3 2m
+
+* Current Sense (Zero volt source)
+Vsense 3 4 0
+
+* Back EMF (Voltage Controlled Voltage Source)
+* V_bemf = Ke * Omega
+* For stalled motor, Omega = 0, so Bemf = 0.
+* We keep the structure but force V(omega) to 0.
+Ebemf 4 5 VALUE = {0.01 * V(omega) * (1 + 0.1 * sin(3 * V(theta)))}
+
+* Shunt Resistor
+Rshunt 5 0 0.1
+
+* Motor Mechanical Model (STALLED)
+* We force Omega to 0V.
+Vstall omega 0 0
+
+* Rotor Angle
+* Omega is 0, so Theta is constant (0).
+Vtheta theta 0 0
+
+* Transient Analysis: 1us step, 500us total (10 PWM cycles at 20kHz)
+.tran 1u 500us
+
+* Control block for Ngspice (Ignored by LTSpice)
+.control
+run
+set filetype=ascii
+write simulation_stalled_result.txt I(Vsense) V(1) V(omega) V(4) V(5)
+.endc
+
+.end

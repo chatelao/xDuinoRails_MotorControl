@@ -1,0 +1,175 @@
+---
+name: Build and Release
+
+on:
+  push:
+  workflow_dispatch:
+  release:
+    types: [created]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - seeed_xiao_rp2040
+          - seeed_xiao_rp2040_led
+          - esp32_s2_saola
+          - seeed_xiao_esp32c3
+          - seeed_xiao_esp32s3
+          - nucleo_f446re
+          - seeed_xiao_samd21
+          - adafruit_feather_nrf52840
+          - adafruit_feather_nrf52832
+          - nucleo_g431rb
+          - nucleo_g431rb_shunt
+          - uno
+        example:
+          - SineWaveSpeed
+        include:
+          - platform: seeed_xiao_rp2040
+            example: FiftyPercent
+          - platform: seeed_xiao_rp2040_led
+            example: FiftyPercent
+          - platform: seeed_xiao_rp2040
+            example: RotaryEncoderWithBEMF
+          - platform: seeed_xiao_rp2040_led
+            example: RotaryEncoderWithBEMF
+          - platform: seeed_xiao_rp2040_led
+            example: MotorSerialDebug
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install PlatformIO and dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --upgrade platformio
+
+      - name: Build Firmware
+        env:
+          PIOPROJECT_SRC_DIR: examples/${{ matrix.example }}
+        run: pio run -e ${{ matrix.platform }}
+
+      - name: Rename Firmware and Set Path
+        id: rename
+        run: |
+          VERSION="${{ github.ref_name }}"
+          SAFE_VERSION=$(echo "$VERSION" | tr '/' '-')
+          FIRMWARE_BASENAME="xDuinoRails_MotorControl_bEMF-"
+          FIRMWARE_BASENAME="${FIRMWARE_BASENAME}${SAFE_VERSION}-"
+          FIRMWARE_BASENAME="${FIRMWARE_BASENAME}${{ matrix.example }}-"
+          FIRMWARE_BASENAME="${FIRMWARE_BASENAME}${{ matrix.platform }}"
+          BUILD_DIR=".pio/build/${{ matrix.platform }}"
+
+          EXTENSION="bin"
+          SUFFIX=""
+
+          if [[ "${{ matrix.platform }}" == "seeed_xiao_rp2040_led" ]]; then
+            EXTENSION="uf2"
+          elif [[ "${{ matrix.platform }}" == "seeed_xiao_rp2040" ]]; then
+            EXTENSION="uf2"
+          elif [[ "${{ matrix.platform }}" == "uno" ]]; then
+            EXTENSION="hex"
+          elif [[ "${{ matrix.platform }}" == *"nrf52"* ]]; then
+             if [ -f "${BUILD_DIR}/firmware.zip" ]; then
+                EXTENSION="zip"
+             else
+                EXTENSION="hex"
+             fi
+          fi
+
+          mv "${BUILD_DIR}/firmware.${EXTENSION}" "${FIRMWARE_BASENAME}${SUFFIX}.${EXTENSION}"
+          echo "firmware_glob=${FIRMWARE_BASENAME}${SUFFIX}.*" >> $GITHUB_OUTPUT
+
+      - name: Upload firmware as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}-${{ matrix.example }}-firmware
+          path: ${{ steps.rename.outputs.firmware_glob }}
+
+  build-rust:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust Target
+        run: rustup target add thumbv7em-none-eabihf
+
+      - name: Build Rust Firmware
+        working-directory: rust
+        run: cargo build --release
+
+      - name: Install objcopy
+        run: sudo apt-get update && sudo apt-get install -y binutils-arm-none-eabi
+
+      - name: Prepare Artifacts
+        working-directory: rust
+        run: |
+          VERSION="${{ github.ref_name }}"
+          SAFE_VERSION=$(echo "$VERSION" | tr '/' '-')
+          mkdir -p output
+          # Copy ELF
+          cp target/thumbv7em-none-eabihf/release/sine_wave_controller output/xDuinoRails_MotorControl_bEMF-${SAFE_VERSION}-SineWaveSpeed-nucleo_g431rb_rust.elf
+          # Create BIN
+          arm-none-eabi-objcopy -O binary target/thumbv7em-none-eabihf/release/sine_wave_controller output/xDuinoRails_MotorControl_bEMF-${SAFE_VERSION}-SineWaveSpeed-nucleo_g431rb_rust.bin
+
+      - name: Upload Rust artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-firmware
+          path: rust/output/*
+
+  simulation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ngspice
+          pip install matplotlib numpy
+
+      - name: Run Simulation
+        run: python simulation/run_sim.py
+
+      - name: Upload Simulation Graph
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulation-graph
+          path: simulation/simulation_result.png
+
+  release:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    needs: [build, simulation, build-rust]
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all firmware artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: firmware
+
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            firmware/*/*

@@ -1,0 +1,16 @@
+#######################################
+# Syntax Coloring Map for xDuinoRails MotorControl bEMF
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+hal_bemf_update_callback_t	KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+hal_motor_init	KEYWORD2
+hal_motor_set_pwm	KEYWORD2
+hal_motor_get_bemf_buffer	KEYWORD2
+hal_motor_get_current_buffer	KEYWORD2

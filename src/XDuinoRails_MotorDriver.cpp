@@ -192,7 +192,9 @@ void XDuinoRails_MotorDriver_Impl::begin() {
     pinMode(_bemfBPin, INPUT);
 
 #if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32) || defined(ARDUINO_ARCH_SAMD)
-    hal_motor_init(_pwmAPin, _pwmBPin, _bemfAPin, _bemfBPin, on_bemf_update_wrapper);
+    hal_motor_init_pwm(_pwmAPin, _pwmBPin);
+    hal_motor_init_bemf_adc(_bemfAPin, _bemfBPin);
+    hal_motor_init_bemf_dma(on_bemf_update_wrapper);
 #elif defined(ARDUINO_ARCH_RP2040)
     add_repeating_timer_us(pwm_period_us, pwm_on_callback, NULL, &_pwm_timer);
 #endif
@@ -295,7 +297,7 @@ void XDuinoRails_MotorDriver_Impl::update() {
 
 
 #if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32) || defined(ARDUINO_ARCH_SAMD)
-    hal_motor_set_pwm(_current_pwm, _motor_forward);
+    hal_motor_set_duty(_current_pwm, _motor_forward);
 #endif
 }
 
